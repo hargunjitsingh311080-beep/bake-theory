@@ -116,7 +116,7 @@ const DEFAULT_SIGNATURE_CAKES: SignatureCake[] = [
     id: "SC-102",
     name: "Double Chocolate Dream",
     description: "Deep decadent Belgian chocolate layers filled with pure Nutella frosting cream and decorated with glazed maraschino cherries and flowing hot chocolate drips.",
-    image: "https://images.unsplash.com/photo-1606313564200-e75d5e30476c?q=80&w=600&auto=format&fit=crop",
+    image: "https://images.unsplash.com/photo-1578985545062-69928b1d9587?q=80&w=600&auto=format&fit=crop",
     baseSize: 1.0,
     baseTiers: 1,
     baseShape: "round",
@@ -148,7 +148,7 @@ const DEFAULT_SIGNATURE_CAKES: SignatureCake[] = [
     id: "SC-104",
     name: "Espresso Mocha Crunch",
     description: "A coffee lover's absolute crown jewel! Baked with rich, deep-brewed espresso crumbles, layered with coffee mocha cream, caramel drips, and finished with caramelized walnuts and gold flakes.",
-    image: "https://images.unsplash.com/photo-1578985545062-69928b1d9587?q=80&w=600&auto=format&fit=crop",
+    image: "https://images.unsplash.com/photo-1508737027454-e6454ef45afd?q=80&w=600&auto=format&fit=crop",
     baseSize: 1.5,
     baseTiers: 1,
     baseShape: "square",
@@ -164,7 +164,7 @@ const DEFAULT_SIGNATURE_CAKES: SignatureCake[] = [
     id: "SC-105",
     name: "Heart-to-Heart Velvet Rouge",
     description: "Celebrate deep romantic anniversaries with this exquisite heart-shaped masterpiece. Rich velvety crumb layers sandwiched between fresh strawberry spreads and silky buttercream piping.",
-    image: "https://images.unsplash.com/photo-1588195538326-c5b1e9f8011b?q=80&w=600&auto=format&fit=crop",
+    image: "https://images.unsplash.com/photo-1616690710400-a16d146927c5?q=80&w=600&auto=format&fit=crop",
     baseSize: 1.0,
     baseTiers: 1,
     baseShape: "heart",
@@ -180,7 +180,7 @@ const DEFAULT_SIGNATURE_CAKES: SignatureCake[] = [
     id: "SC-106",
     name: "Fresh Strawberry Meadow",
     description: "Light, summery bliss incorporating pure vanilla sponge, whipped Chantilly cream frosting layers, filled with seasonal strawberry reduction, and top-piled with fresh glazed strawberries.",
-    image: "https://images.unsplash.com/photo-1557925923-cd4648e21187?q=80&w=600&auto=format&fit=crop",
+    image: "https://images.unsplash.com/photo-1565958011703-44f9829ba187?q=80&w=600&auto=format&fit=crop",
     baseSize: 1.0,
     baseTiers: 1,
     baseShape: "round",
@@ -363,26 +363,48 @@ export default function App() {
   // INITIAL DATA SYNC
   // ------------------------------------------------------------------------
   useEffect(() => {
-    // Clear any previous seed orders if the user wants all removed
-    const hasClearedSeed = safeStorage.getItem('bake_theory_orders_removed_all_v2');
-    if (!hasClearedSeed) {
-      safeStorage.setItem('bake_theory_orders', JSON.stringify([]));
-      safeStorage.setItem('bake_theory_orders_removed_all_v2', 'true');
-      setOrders([]);
-    } else {
-      const raw = safeStorage.getItem('bake_theory_orders');
-      if (raw) {
-        try {
-          setOrders(JSON.parse(raw));
-        } catch (e) {
+    // Core loader from database
+    const syncWithBackend = async () => {
+      try {
+        const response = await fetch('/api/orders');
+        if (response.ok) {
+          const loaded = await response.json();
+          if (Array.isArray(loaded)) {
+            setOrders(loaded);
+            safeStorage.setItem('bake_theory_orders', JSON.stringify(loaded));
+            return;
+          }
+        }
+      } catch (e) {
+        console.error("Backend DB pull failed, falling back to local Storage", e);
+      }
+
+      // Local storage fallback
+      const hasClearedSeed = safeStorage.getItem('bake_theory_orders_removed_all_v2');
+      if (!hasClearedSeed) {
+        safeStorage.setItem('bake_theory_orders', JSON.stringify([]));
+        safeStorage.setItem('bake_theory_orders_removed_all_v2', 'true');
+        setOrders([]);
+      } else {
+        const raw = safeStorage.getItem('bake_theory_orders');
+        if (raw) {
+          try {
+            setOrders(JSON.parse(raw));
+          } catch (e) {
+            setOrders(DEFAULT_ORDERS);
+            safeStorage.setItem('bake_theory_orders', JSON.stringify(DEFAULT_ORDERS));
+          }
+        } else {
           setOrders(DEFAULT_ORDERS);
           safeStorage.setItem('bake_theory_orders', JSON.stringify(DEFAULT_ORDERS));
         }
-      } else {
-        setOrders(DEFAULT_ORDERS);
-        safeStorage.setItem('bake_theory_orders', JSON.stringify(DEFAULT_ORDERS));
       }
-    }
+    };
+
+    syncWithBackend();
+
+    // Auto-refresh orders list every 10 seconds for real-time order tracking
+    const pollInterval = setInterval(syncWithBackend, 10000);
 
     // Try to auto-login customer if session exists
     const storedCust = safeStorage.getItem('bake_theory_cur_customer');
@@ -405,11 +427,22 @@ export default function App() {
       setSignatureCakes(DEFAULT_SIGNATURE_CAKES);
       safeStorage.setItem('bake_theory_sig_cakes', JSON.stringify(DEFAULT_SIGNATURE_CAKES));
     }
+
+    return () => clearInterval(pollInterval);
   }, []);
 
   const saveOrders = (updated: CakeOrder[]) => {
     setOrders(updated);
     safeStorage.setItem('bake_theory_orders', JSON.stringify(updated));
+
+    // Save to central server backend
+    fetch('/api/orders/save-all', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(updated)
+    }).catch(err => console.error("Error saving in-memory update to server", err));
   };
 
   const saveSignatureCakes = (updated: SignatureCake[]) => {

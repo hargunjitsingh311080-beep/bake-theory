@@ -42,6 +42,16 @@ import org.json.JSONArray
 import java.net.URLEncoder
 import java.text.SimpleDateFormat
 import java.util.*
+import coil.compose.AsyncImage
+import androidx.compose.ui.layout.ContentScale
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
+import okhttp3.MediaType.Companion.toMediaTypeOrNull
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.GlobalScope
 
 // ==========================================
 // DATA MODELS
@@ -82,6 +92,8 @@ data class CakeOrder(
     val createdAt: String
 )
 
+const val BACKEND_URL = "https://ais-dev-ymptfysun5z77fkdksza2r-927215896925.asia-southeast1.run.app"
+
 data class SignatureCake(
     val id: String,
     val name: String,
@@ -95,7 +107,8 @@ data class SignatureCake(
     val baseToppings: List<String>,
     val baseColor: String,
     val tags: List<String>,
-    val price: Int
+    val price: Int,
+    val image: String
 )
 
 enum class Tab { SHOWROOM, DESIGNER, STATUS, ADMIN }
@@ -106,12 +119,12 @@ enum class Step { SIZING, FLAVOR, AESTHETICS, CUSTOMER, SUCCESS }
 // ==========================================
 
 val DEFAULT_SIGNATURE_CAKES = listOf(
-    SignatureCake("SC-101", "Classic Rose Bouquet", "An elegant, romantic highlight perfect for birthdays and anniversaries. Adorned with delicate buttercream rose transfers, beautiful sugar pearls, and a warm honey gold base tint.", 1.5, 1, "round", "Red Velvet Velvet Cream", "Silky Buttercream", "Fresh Strawberry Compote", listOf("pearls", "gold_foil"), "#EEDAA2", listOf("Anniversary", "Birthday", "Elegant"), 1890),
-    SignatureCake("SC-102", "Double Chocolate Dream", "Deep decadent Belgian chocolate layers filled with pure Nutella frosting cream and decorated with glazed maraschino cherries and flowing hot chocolate drips.", 1.0, 1, "round", "Belgian Chocolate Fudge", "Rich Chocolate Ganache", "Pure Premium Nutella Spread", listOf("cherries", "ganache_drips"), "#4E3629", listOf("Chocolate", "Birthday", "Celebration"), 1440),
-    SignatureCake("SC-103", "Pastel Princess Magic", "Multi-layered towering pastel colored marvel featuring majestic vanilla flavor, silky smooth buttercream casing, edible 24k gold leaf details, French macarons, and rainbow sprinkles.", 2.0, 2, "round", "Classic Vanilla Bean", "Silky Buttercream", "Standard Custard / Cream", listOf("sprinkles", "macarons", "gold_foil"), "#FFD3DF", listOf("Kids", "Birthday", "Vibrant"), 2650),
-    SignatureCake("SC-104", "Espresso Mocha Crunch", "A coffee lover's absolute crown jewel! Baked with rich, deep-brewed espresso crumbles, layered with coffee mocha cream, caramel drips, and finished with caramelized walnuts and gold flakes.", 1.5, 1, "square", "Espresso Mocha Crunch", "Silky Buttercream", "Crushed Oreo Cookie Creme", listOf("gold_foil", "ganache_drips"), "#E2D4F0", listOf("Coffee", "Birthday", "Modern"), 2190),
-    SignatureCake("SC-105", "Heart-to-Heart Velvet Rouge", "Celebrate deep romantic anniversaries with this exquisite heart-shaped masterpiece. Rich velvety crumb layers sandwiched between fresh strawberry spreads and silky buttercream piping.", 1.0, 1, "heart", "Red Velvet Velvet Cream", "Silky Buttercream", "Fresh Strawberry Compote", listOf("pearls", "cherries"), "#FFD3DF", listOf("Romance", "Anniversary", "Heart"), 1540),
-    SignatureCake("SC-106", "Fresh Strawberry Meadow", "Light, summery bliss incorporating pure vanilla sponge, whipped Chantilly cream frosting layers, filled with seasonal strawberry reduction, and top-piled with fresh glazed strawberries.", 1.0, 1, "round", "Classic Vanilla Bean", "Whipped Chantilly", "Fresh Strawberry Compote", listOf("strawberries", "pearls"), "#FDFBF7", listOf("Fruit", "Fresh", "Celebration"), 1290)
+    SignatureCake("SC-101", "Classic Rose Bouquet", "An elegant, romantic highlight perfect for birthdays and anniversaries. Adorned with delicate buttercream rose transfers, beautiful sugar pearls, and a warm honey gold base tint.", 1.5, 1, "round", "Red Velvet Velvet Cream", "Silky Buttercream", "Fresh Strawberry Compote", listOf("pearls", "gold_foil"), "#EEDAA2", listOf("Anniversary", "Birthday", "Elegant"), 1890, "https://images.unsplash.com/photo-1535141192574-5d4897c13636?q=80&w=600&auto=format&fit=crop"),
+    SignatureCake("SC-102", "Double Chocolate Dream", "Deep decadent Belgian chocolate layers filled with pure Nutella frosting cream and decorated with glazed maraschino cherries and flowing hot chocolate drips.", 1.0, 1, "round", "Belgian Chocolate Fudge", "Rich Chocolate Ganache", "Pure Premium Nutella Spread", listOf("cherries", "ganache_drips"), "#4E3629", listOf("Chocolate", "Birthday", "Celebration"), 1440, "https://images.unsplash.com/photo-1578985545062-69928b1d9587?q=80&w=600&auto=format&fit=crop"),
+    SignatureCake("SC-103", "Pastel Princess Magic", "Multi-layered towering pastel colored marvel featuring majestic vanilla flavor, silky smooth buttercream casing, edible 24k gold leaf details, French macarons, and rainbow sprinkles.", 2.0, 2, "round", "Classic Vanilla Bean", "Silky Buttercream", "Standard Custard / Cream", listOf("sprinkles", "macarons", "gold_foil"), "#FFD3DF", listOf("Kids", "Birthday", "Vibrant"), 2650, "https://images.unsplash.com/photo-1542826438-bd32f43d626f?q=80&w=600&auto=format&fit=crop"),
+    SignatureCake("SC-104", "Espresso Mocha Crunch", "A coffee lover's absolute crown jewel! Baked with rich, deep-brewed espresso crumbles, layered with coffee mocha cream, caramel drips, and finished with caramelized walnuts and gold flakes.", 1.5, 1, "square", "Espresso Mocha Crunch", "Silky Buttercream", "Crushed Oreo Cookie Creme", listOf("gold_foil", "ganache_drips"), "#E2D4F0", listOf("Coffee", "Birthday", "Modern"), 2190, "https://images.unsplash.com/photo-1508737027454-e6454ef45afd?q=80&w=600&auto=format&fit=crop"),
+    SignatureCake("SC-105", "Heart-to-Heart Velvet Rouge", "Celebrate deep romantic anniversaries with this exquisite heart-shaped masterpiece. Rich velvety crumb layers sandwiched between fresh strawberry spreads and silky buttercream piping.", 1.0, 1, "heart", "Red Velvet Velvet Cream", "Silky Buttercream", "Fresh Strawberry Compote", listOf("pearls", "cherries"), "#FFD3DF", listOf("Romance", "Anniversary", "Heart"), 1540, "https://images.unsplash.com/photo-1616690710400-a16d146927c5?q=80&w=600&auto=format&fit=crop"),
+    SignatureCake("SC-106", "Fresh Strawberry Meadow", "Light, summery bliss incorporating pure vanilla sponge, whipped Chantilly cream frosting layers, filled with seasonal strawberry reduction, and top-piled with fresh glazed strawberries.", 1.0, 1, "round", "Classic Vanilla Bean", "Whipped Chantilly", "Fresh Strawberry Compote", listOf("strawberries", "pearls"), "#FDFBF7", listOf("Fruit", "Fresh", "Celebration"), 1290, "https://images.unsplash.com/photo-1565958011703-44f9829ba187?q=80&w=600&auto=format&fit=crop")
 )
 
 val DEFAULT_ORDERS = emptyList<CakeOrder>()
@@ -201,11 +214,45 @@ fun jsonToCakeOrder(obj: JSONObject): CakeOrder {
     )
 }
 
+fun saveOrdersToBackend(context: Context, orders: List<CakeOrder>) {
+    val client = OkHttpClient()
+    val sharedPrefs = context.getSharedPreferences("BakeTheoryPrefs", Context.MODE_PRIVATE)
+    val serverUrl = sharedPrefs.getString("backend_api_url", BACKEND_URL) ?: BACKEND_URL
+    
+    val arr = JSONArray()
+    orders.forEach { arr.put(cakeOrderToJson(it)) }
+    
+    val mediaType = "application/json; charset=utf-8".toMediaTypeOrNull()
+    val requestBody = arr.toString().toRequestBody(mediaType)
+    
+    GlobalScope.launch(Dispatchers.IO) {
+        try {
+            val request = Request.Builder()
+                .url("$serverUrl/api/orders/save-all")
+                .post(requestBody)
+                .build()
+            client.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) {
+                    println("BakeTheory-API: Save remote database failed with code ${response.code}")
+                } else {
+                    println("BakeTheory-API: Synchronized successfully with server database!")
+                }
+            }
+        } catch (e: Exception) {
+            println("BakeTheory-API: Network synchronization failed, queued locally.")
+            e.printStackTrace()
+        }
+    }
+}
+
 fun saveOrdersToSharedPrefs(context: Context, orders: List<CakeOrder>) {
     val sharedPrefs = context.getSharedPreferences("BakeTheoryPrefs", Context.MODE_PRIVATE)
     val arr = JSONArray()
     orders.forEach { arr.put(cakeOrderToJson(it)) }
     sharedPrefs.edit().putString("saved_orders", arr.toString()).apply()
+    
+    // Asynchronously update full-stack db
+    saveOrdersToBackend(context, orders)
 }
 
 fun loadOrdersFromSharedPrefs(context: Context): List<CakeOrder> {
@@ -305,12 +352,52 @@ fun BakeTheoryMain() {
     val ordersTable = remember { mutableStateListOf<CakeOrder>() }
     
     LaunchedEffect(Unit) {
-        val loaded = loadOrdersFromSharedPrefs(context)
+        // Load locally first for instant startup feedback
+        val localOrders = loadOrdersFromSharedPrefs(context)
         ordersTable.clear()
-        if (loaded.isEmpty()) {
+        if (localOrders.isEmpty()) {
             ordersTable.addAll(DEFAULT_ORDERS)
         } else {
-            ordersTable.addAll(loaded)
+            ordersTable.addAll(localOrders)
+        }
+        
+        // Polling loop in background thread to sync with central database
+        val client = OkHttpClient()
+        while (true) {
+            try {
+                val sharedPrefs = context.getSharedPreferences("BakeTheoryPrefs", Context.MODE_PRIVATE)
+                val serverUrl = sharedPrefs.getString("backend_api_url", BACKEND_URL) ?: BACKEND_URL
+                
+                withContext(Dispatchers.IO) {
+                    val request = Request.Builder()
+                        .url("$serverUrl/api/orders")
+                        .build()
+                    client.newCall(request).execute().use { response ->
+                        if (response.isSuccessful) {
+                            val bodyString = response.body?.string()
+                            if (!bodyString.isNullOrEmpty()) {
+                                val arr = JSONArray(bodyString)
+                                val loaded = mutableListOf<CakeOrder>()
+                                for (i in 0 until arr.length()) {
+                                    loaded.add(jsonToCakeOrder(arr.getJSONObject(i)))
+                                }
+                                withContext(Dispatchers.Main) {
+                                    ordersTable.clear()
+                                    ordersTable.addAll(loaded)
+                                    
+                                    val localPrefs = context.getSharedPreferences("BakeTheoryPrefs", Context.MODE_PRIVATE)
+                                    val localArr = JSONArray()
+                                    loaded.forEach { localArr.put(cakeOrderToJson(it)) }
+                                    localPrefs.edit().putString("saved_orders", localArr.toString()).apply()
+                                }
+                            }
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                println("BakeTheory-API: Poll error: ${e.message}")
+            }
+            kotlinx.coroutines.delay(10000)
         }
     }
     var activeTab by remember { mutableStateOf(Tab.SHOWROOM) }
@@ -881,13 +968,14 @@ fun ShowroomCakeCard(cake: SignatureCake, onSelect: () -> Unit) {
         modifier = Modifier.fillMaxWidth()
     ) {
         Column {
-            // Interactive custom cake preview sketch at the card top
-            InterActiveCakePreview(
-                sizeKg = cake.baseSize,
-                tiers = cake.baseTiers,
-                shape = cake.baseShape,
-                accentColorHex = cake.baseColor,
-                toppings = cake.baseToppings
+            // High-quality premium cake photograph
+            AsyncImage(
+                model = cake.image,
+                contentDescription = cake.name,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(200.dp),
+                contentScale = ContentScale.Crop
             )
 
             Column(modifier = Modifier.padding(16.dp)) {
