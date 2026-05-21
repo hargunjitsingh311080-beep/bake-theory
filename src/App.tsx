@@ -812,7 +812,7 @@ export default function App() {
     <div className="min-h-screen bg-[#faf6f0] text-[#2c221e] antialiased flex flex-col font-sans">
       
       {/* HEADER BANNER */}
-      <header className="bg-white border-b border-[#ebdcd0] sticky top-0 z-10 shadow-xs">
+      <header className="bg-white border-b border-[#ebdcd0] shadow-xs">
         <div className="max-w-7xl mx-auto px-4 py-3 sm:px-6 flex flex-col md:flex-row items-center justify-between gap-4">
           
           {/* Logo Brand / Human Labels */}

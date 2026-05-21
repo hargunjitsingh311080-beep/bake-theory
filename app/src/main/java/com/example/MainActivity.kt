@@ -262,9 +262,17 @@ fun BakeTheoryMain() {
 
     Scaffold(
         modifier = Modifier.fillMaxSize(),
-        topBar = {
+        containerColor = AppBg
+    ) { innerPadding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(innerPadding)
+                .verticalScroll(rememberScrollState())
+        ) {
             Column(
                 modifier = Modifier
+                    .fillMaxWidth()
                     .background(IvoryCream)
                     .statusBarsPadding()
                     .padding(top = 8.dp, bottom = 8.dp, start = 12.dp, end = 12.dp)
@@ -400,16 +408,12 @@ fun BakeTheoryMain() {
                     )
                 }
             }
-        },
-        containerColor = AppBg
-    ) { innerPadding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding)
-                .verticalScroll(rememberScrollState())
-                .padding(16.dp)
-        ) {
+            
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(16.dp)
+            ) {
             when (activeTab) {
                 Tab.SHOWROOM -> {
                     ShowroomScreen(
