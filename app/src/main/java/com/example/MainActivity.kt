@@ -37,6 +37,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import com.example.ui.theme.MyApplicationTheme
+import org.json.JSONObject
+import org.json.JSONArray
 import java.net.URLEncoder
 import java.text.SimpleDateFormat
 import java.util.*
@@ -113,6 +115,113 @@ val DEFAULT_SIGNATURE_CAKES = listOf(
 )
 
 val DEFAULT_ORDERS = emptyList<CakeOrder>()
+
+fun cakeOrderToJson(ord: CakeOrder): JSONObject {
+    val obj = JSONObject()
+    obj.put("id", ord.id)
+    obj.put("customerName", ord.customerName)
+    obj.put("customerPhone", ord.customerPhone)
+    obj.put("customerEmail", ord.customerEmail)
+    obj.put("pickupOrDelivery", ord.pickupOrDelivery)
+    obj.put("deliveryAddress", ord.deliveryAddress)
+    obj.put("deliveryDate", ord.deliveryDate)
+    obj.put("deliveryTime", ord.deliveryTime)
+    obj.put("sizeKg", ord.sizeKg)
+    obj.put("tiers", ord.tiers)
+    obj.put("shape", ord.shape)
+    obj.put("flavor", ord.flavor)
+    obj.put("frosting", ord.frosting)
+    obj.put("filling", ord.filling)
+    obj.put("accentColor", ord.accentColor)
+    obj.put("customMessage", ord.customMessage)
+    
+    val toppingsArray = JSONArray()
+    ord.toppings.forEach { toppingsArray.put(it) }
+    obj.put("toppings", toppingsArray)
+    
+    obj.put("specialNotes", ord.specialNotes)
+    obj.put("basePrice", ord.basePrice)
+    obj.put("flavorSurcharge", ord.flavorSurcharge)
+    obj.put("tiersSurcharge", ord.tiersSurcharge)
+    obj.put("decorSurcharge", ord.decorSurcharge)
+    obj.put("deliveryFee", ord.deliveryFee)
+    obj.put("discount", ord.discount)
+    obj.put("totalPrice", ord.totalPrice)
+    obj.put("paymentStatus", ord.paymentStatus)
+    obj.put("paymentMethod", ord.paymentMethod)
+    obj.put("depositAmount", ord.depositAmount)
+    obj.put("amountPaid", ord.amountPaid)
+    obj.put("paymentNotes", ord.paymentNotes)
+    obj.put("orderStatus", ord.orderStatus)
+    obj.put("createdAt", ord.createdAt)
+    return obj
+}
+
+fun jsonToCakeOrder(obj: JSONObject): CakeOrder {
+    val toppingsList = mutableListOf<String>()
+    val arr = obj.optJSONArray("toppings")
+    if (arr != null) {
+        for (i in 0 until arr.length()) {
+            toppingsList.add(arr.getString(i))
+        }
+    }
+    return CakeOrder(
+        id = obj.getString("id"),
+        customerName = obj.getString("customerName"),
+        customerPhone = obj.getString("customerPhone"),
+        customerEmail = obj.optString("customerEmail", ""),
+        pickupOrDelivery = obj.getString("pickupOrDelivery"),
+        deliveryAddress = obj.optString("deliveryAddress", ""),
+        deliveryDate = obj.getString("deliveryDate"),
+        deliveryTime = obj.getString("deliveryTime"),
+        sizeKg = obj.getDouble("sizeKg"),
+        tiers = obj.getInt("tiers"),
+        shape = obj.getString("shape"),
+        flavor = obj.getString("flavor"),
+        frosting = obj.getString("frosting"),
+        filling = obj.optString("filling", "Standard Custard / Cream"),
+        accentColor = obj.getString("accentColor"),
+        customMessage = obj.optString("customMessage", ""),
+        toppings = toppingsList,
+        specialNotes = obj.optString("specialNotes", ""),
+        basePrice = obj.getInt("basePrice"),
+        flavorSurcharge = obj.optInt("flavorSurcharge", 0),
+        tiersSurcharge = obj.optInt("tiersSurcharge", 0),
+        decorSurcharge = obj.optInt("decorSurcharge", 0),
+        deliveryFee = obj.optInt("deliveryFee", 0),
+        discount = obj.optInt("discount", 0),
+        totalPrice = obj.getInt("totalPrice"),
+        paymentStatus = obj.getString("paymentStatus"),
+        paymentMethod = obj.optString("paymentMethod", "upi"),
+        depositAmount = obj.optInt("depositAmount", 0),
+        amountPaid = obj.optInt("amountPaid", 0),
+        paymentNotes = obj.optString("paymentNotes", ""),
+        orderStatus = obj.getString("orderStatus"),
+        createdAt = obj.getString("createdAt")
+    )
+}
+
+fun saveOrdersToSharedPrefs(context: Context, orders: List<CakeOrder>) {
+    val sharedPrefs = context.getSharedPreferences("BakeTheoryPrefs", Context.MODE_PRIVATE)
+    val arr = JSONArray()
+    orders.forEach { arr.put(cakeOrderToJson(it)) }
+    sharedPrefs.edit().putString("saved_orders", arr.toString()).apply()
+}
+
+fun loadOrdersFromSharedPrefs(context: Context): List<CakeOrder> {
+    val sharedPrefs = context.getSharedPreferences("BakeTheoryPrefs", Context.MODE_PRIVATE)
+    val response = sharedPrefs.getString("saved_orders", null) ?: return DEFAULT_ORDERS
+    try {
+        val arr = JSONArray(response)
+        val res = mutableListOf<CakeOrder>()
+        for (i in 0 until arr.length()) {
+            res.add(jsonToCakeOrder(arr.getJSONObject(i)))
+        }
+        return res
+    } catch (e: Exception) {
+        return DEFAULT_ORDERS
+    }
+}
 
 val SIZES = listOf(
     Pair(0.5, "0.5 kg (Serves 4 - 6)"),
@@ -192,8 +301,18 @@ class MainActivity : ComponentActivity() {
 fun BakeTheoryMain() {
     val context = LocalContext.current
     
-    // In-memory persistent states
-    val ordersTable = remember { mutableStateListOf<CakeOrder>().apply { addAll(DEFAULT_ORDERS) } }
+    // Persistent states
+    val ordersTable = remember { mutableStateListOf<CakeOrder>() }
+    
+    LaunchedEffect(Unit) {
+        val loaded = loadOrdersFromSharedPrefs(context)
+        ordersTable.clear()
+        if (loaded.isEmpty()) {
+            ordersTable.addAll(DEFAULT_ORDERS)
+        } else {
+            ordersTable.addAll(loaded)
+        }
+    }
     var activeTab by remember { mutableStateOf(Tab.SHOWROOM) }
     
     // Custom Designer Form States
@@ -464,6 +583,7 @@ fun BakeTheoryMain() {
                         submittedOrderRecord = submittedOrderRecord,
                         onOrderSubmit = { order ->
                             ordersTable.add(0, order)
+                            saveOrdersToSharedPrefs(context, ordersTable)
                             submittedOrderRecord = order
                             stepState = Step.SUCCESS
                         },
@@ -562,6 +682,7 @@ fun BakeTheoryMain() {
                                         amountPaid = if (editPaymentStatus == "paid_in_full") newBaseTotal else if (editPaymentStatus == "unpaid") 0 else original.depositAmount
                                     )
                                     ordersTable[idx] = updated
+                                    saveOrdersToSharedPrefs(context, ordersTable)
                                     activeAdminOrder = updated
                                     Toast.makeText(context, "Ledger system updated successfully!", Toast.LENGTH_SHORT).show()
                                 }
