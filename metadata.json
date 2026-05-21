@@ -1,0 +1,6 @@
+{
+  "name": "Bake Theory",
+  "description": "Custom cake ordering and payment record management portal for Bake Theory home bakery.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
