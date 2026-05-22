@@ -707,30 +707,30 @@ fun BakeTheoryMain() {
                     horizontalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
                     TabButton(
-                        label = "Collection",
+                        label = "Gallery",
                         isSelected = activeTab == Tab.SHOWROOM,
-                        icon = Icons.Default.List,
+                        icon = Icons.Default.Home,
                         onSelect = { activeTab = Tab.SHOWROOM },
                         modifier = Modifier.weight(1f)
                     )
                     TabButton(
-                        label = "Custom",
+                        label = "Designer",
                         isSelected = activeTab == Tab.DESIGNER,
-                        icon = Icons.Default.Star,
+                        icon = Icons.Default.Edit,
                         onSelect = { activeTab = Tab.DESIGNER },
                         modifier = Modifier.weight(1f)
                     )
                     TabButton(
-                        label = "Track",
+                        label = "Orders",
                         isSelected = activeTab == Tab.STATUS,
                         icon = Icons.Default.ShoppingCart,
                         onSelect = { activeTab = Tab.STATUS },
                         modifier = Modifier.weight(1f)
                     )
                     TabButton(
-                        label = "Owner",
+                        label = "Admin",
                         isSelected = activeTab == Tab.ADMIN,
-                        icon = Icons.Default.Lock,
+                        icon = Icons.Default.Settings,
                         onSelect = { activeTab = Tab.ADMIN },
                         modifier = Modifier.weight(1f)
                     )
@@ -1012,7 +1012,7 @@ fun TabButton(
             Text(
                 text = label,
                 color = if (isSelected) Color.White else ChocolateDark,
-                fontSize = 11.sp,
+                fontSize = 12.sp,
                 fontWeight = FontWeight.Bold
             )
         }
