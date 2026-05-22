@@ -40,7 +40,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
-import com.example.ui.theme.BakeTheoryTheme
+import com.baketheory.ui.theme.BakeTheoryTheme
 import org.json.JSONObject
 import org.json.JSONArray
 import java.net.URLEncoder
@@ -707,28 +707,28 @@ fun BakeTheoryMain() {
                     horizontalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
                     TabButton(
-                        label = "Gallery",
+                        label = "Collection",
                         isSelected = activeTab == Tab.SHOWROOM,
                         icon = Icons.Default.List,
                         onSelect = { activeTab = Tab.SHOWROOM },
                         modifier = Modifier.weight(1f)
                     )
                     TabButton(
-                        label = "Designer",
+                        label = "Custom",
                         isSelected = activeTab == Tab.DESIGNER,
-                        icon = Icons.Default.ShoppingCart,
+                        icon = Icons.Default.Star,
                         onSelect = { activeTab = Tab.DESIGNER },
                         modifier = Modifier.weight(1f)
                     )
                     TabButton(
-                        label = "Orders",
+                        label = "Track",
                         isSelected = activeTab == Tab.STATUS,
-                        icon = Icons.Default.Phone,
+                        icon = Icons.Default.ShoppingCart,
                         onSelect = { activeTab = Tab.STATUS },
                         modifier = Modifier.weight(1f)
                     )
                     TabButton(
-                        label = "Admin",
+                        label = "Owner",
                         isSelected = activeTab == Tab.ADMIN,
                         icon = Icons.Default.Lock,
                         onSelect = { activeTab = Tab.ADMIN },
@@ -1129,10 +1129,23 @@ fun ShowroomScreen(
         modifier = Modifier.fillMaxWidth()
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
+            Box(
+                modifier = Modifier
+                    .background(Color(0xFFFFE6A7), RoundedCornerShape(100.dp))
+                    .padding(horizontal = 10.dp, vertical = 4.dp)
+            ) {
+                Text(
+                    text = "SIGNATURE GALLERY",
+                    fontSize = 9.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color(0xFF78350F)
+                )
+            }
+            Spacer(modifier = Modifier.height(4.dp))
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    text = "Our Royal Recipe Showroom",
-                    fontSize = 18.sp,
+                    text = "Explore Our Bake Theory Creations",
+                    fontSize = 20.sp,
                     fontWeight = FontWeight.Bold,
                     fontFamily = FontFamily.Serif,
                     color = ChocolateDark
@@ -1153,7 +1166,7 @@ fun ShowroomScreen(
             }
             Spacer(modifier = Modifier.height(4.dp))
             Text(
-                text = "Browse our signature creations. Select one to automatically populate custom design parameters, sizes, and flavors!",
+                text = "Every slice of Bake Theory contains balanced food science and deep home bakery love. Browse our signature designs below. Select any design to adjust its size, shape, flavors, or custom messaging!",
                 fontSize = 12.sp,
                 color = CocoaAccent,
                 lineHeight = 16.sp
@@ -1172,7 +1185,7 @@ fun ShowroomScreen(
         OutlinedTextField(
             value = searchKeyword,
             onValueChange = onKeywordChange,
-            placeholder = { Text("Search creations...", fontSize = 12.sp) },
+            placeholder = { Text("Search our signature bakes...", fontSize = 12.sp) },
             leadingIcon = { Icon(Icons.Default.Search, contentDescription = "Search", modifier = Modifier.size(16.dp)) },
             modifier = Modifier
                 .weight(1f)
