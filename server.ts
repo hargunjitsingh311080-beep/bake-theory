@@ -12,6 +12,7 @@ async function startServer() {
   app.use(express.json());
 
   const DB_FILE = path.join(process.cwd(), 'orders-db.json');
+  const CAKES_FILE = path.join(process.cwd(), 'cakes-db.json');
 
   // Helper to load orders
   function loadOrders() {
@@ -35,7 +36,29 @@ async function startServer() {
     }
   }
 
-  // API endpoints
+  // Helper to load cakes
+  function loadCakes() {
+    try {
+      if (fs.existsSync(CAKES_FILE)) {
+        const data = fs.readFileSync(CAKES_FILE, 'utf-8');
+        return JSON.parse(data);
+      }
+    } catch (e) {
+      console.error("Error reading cakes database", e);
+    }
+    return null; // Return null if file doesn't exist so client can use defaults
+  }
+
+  // Helper to save cakes
+  function saveCakes(cakes: any) {
+    try {
+      fs.writeFileSync(CAKES_FILE, JSON.stringify(cakes, null, 2), 'utf-8');
+    } catch (e) {
+      console.error("Error writing cakes database", e);
+    }
+  }
+
+  // API endpoints for Orders
   app.get('/api/orders', (req, res) => {
     res.json(loadOrders());
   });
@@ -47,6 +70,22 @@ async function startServer() {
       res.json({ success: true, count: ordersList.length });
     } else {
       res.status(400).json({ error: "Expected an array of orders" });
+    }
+  });
+
+  // API endpoints for Signature Cakes
+  app.get('/api/cakes', (req, res) => {
+    const cakes = loadCakes();
+    res.json(cakes);
+  });
+
+  app.post('/api/cakes/save-all', (req, res) => {
+    const cakesList = req.body;
+    if (Array.isArray(cakesList)) {
+      saveCakes(cakesList);
+      res.json({ success: true, count: cakesList.length });
+    } else {
+      res.status(400).json({ error: "Expected an array of cakes" });
     }
   });
 

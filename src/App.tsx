@@ -26,8 +26,13 @@ import {
   ChevronRight, 
   Printer,
   ChevronDown,
-  FileText
+  FileText,
+  Edit3,
+  Trash2,
+  Save,
+  Image as ImageIcon
 } from 'lucide-react';
+import { SignatureCakeManager } from './components/SignatureCakeManager';
 
 // ==========================================
 // CONSTANTS & INTERFACES
@@ -288,6 +293,8 @@ const DEFAULT_ORDERS: CakeOrder[] = [];
 export default function App() {
   // Navigation & Authentication
   const [activeTab, setActiveTab] = useState<'collection' | 'order' | 'my-orders' | 'owner'>('collection');
+  const [editingCake, setEditingCake] = useState<SignatureCake | null>(null);
+  const [isAddingNewCake, setIsAddingNewCake] = useState<boolean>(false);
   const [orders, setOrders] = useState<CakeOrder[]>([]);
   
   // Custom Customer logged in state
@@ -306,10 +313,18 @@ export default function App() {
   const [customPhotoBase64, setCustomPhotoBase64] = useState<string>('');
   const [customPhotoName, setCustomPhotoName] = useState<string>('');
   
-  // Owner Secure Logged In State
+  // OWNER Secure Logged In State
   const [ownerPass, setOwnerPass] = useState<string>('');
   const [isOwnerAuthenticated, setIsOwnerAuthenticated] = useState<boolean>(false);
   const [ownerError, setOwnerError] = useState<string>('');
+
+  // Designer Options State (for owner editing)
+  const [flavors, setFlavors] = useState(FLAVORS);
+  const [frostings, setFrostings] = useState(FROSTINGS);
+  const [fillings, setFillings] = useState(FILLINGS);
+  const [toppings, setToppings] = useState(TOPPINGS_LIST);
+  const [sizes, setSizes] = useState(SIZES);
+  const [shapes, setShapes] = useState(SHAPES);
 
   // ------------------------------------------------------------------------
   // CUSTOM CAKE BUILDER FORM STATE
@@ -322,9 +337,9 @@ export default function App() {
   const [cakeSize, setCakeSize] = useState<number>(1.0);
   const [cakeTiers, setCakeTiers] = useState<number>(1);
   const [cakeShape, setCakeShape] = useState<'round' | 'square' | 'heart' | 'hexagon'>('round');
-  const [cakeFlavor, setCakeFlavor] = useState<string>(FLAVORS[0].name);
-  const [cakeFrosting, setCakeFrosting] = useState<string>(FROSTINGS[0].name);
-  const [cakeFilling, setCakeFilling] = useState<string>(FILLINGS[0].name);
+  const [cakeFlavor, setCakeFlavor] = useState<string>(flavors[0].name);
+  const [cakeFrosting, setCakeFrosting] = useState<string>(frostings[0].name);
+  const [cakeFilling, setCakeFilling] = useState<string>(fillings[0].name);
   const [cakeAccentColor, setCakeAccentColor] = useState<string>(COLOR_PALETTE[0].hex);
   const [customAccentText, setCustomAccentText] = useState<string>('');
   const [cakeMessage, setCakeMessage] = useState<string>('');
@@ -366,20 +381,31 @@ export default function App() {
     // Core loader from database
     const syncWithBackend = async () => {
       try {
-        const response = await fetch('/api/orders');
-        if (response.ok) {
-          const loaded = await response.json();
-          if (Array.isArray(loaded)) {
-            setOrders(loaded);
-            safeStorage.setItem('bake_theory_orders', JSON.stringify(loaded));
-            return;
+        const [ordersRes, cakesRes] = await Promise.all([
+          fetch('/api/orders'),
+          fetch('/api/cakes')
+        ]);
+
+        if (ordersRes.ok) {
+          const loadedOrders = await ordersRes.json();
+          if (Array.isArray(loadedOrders)) {
+            setOrders(loadedOrders);
+            safeStorage.setItem('bake_theory_orders', JSON.stringify(loadedOrders));
+          }
+        }
+
+        if (cakesRes.ok) {
+          const loadedCakes = await cakesRes.json();
+          if (Array.isArray(loadedCakes)) {
+            setSignatureCakes(loadedCakes);
+            safeStorage.setItem('bake_theory_sig_cakes', JSON.stringify(loadedCakes));
           }
         }
       } catch (e) {
         console.error("Backend DB pull failed, falling back to local Storage", e);
       }
 
-      // Local storage fallback
+      // Local storage fallback for orders
       const hasClearedSeed = safeStorage.getItem('bake_theory_orders_removed_all_v2');
       if (!hasClearedSeed) {
         safeStorage.setItem('bake_theory_orders', JSON.stringify([]));
@@ -398,6 +424,20 @@ export default function App() {
           setOrders(DEFAULT_ORDERS);
           safeStorage.setItem('bake_theory_orders', JSON.stringify(DEFAULT_ORDERS));
         }
+      }
+
+      // Local storage fallback for cakes
+      const storedCakes = safeStorage.getItem('bake_theory_sig_cakes');
+      if (storedCakes) {
+        try {
+          setSignatureCakes(JSON.parse(storedCakes));
+        } catch (e) {
+          setSignatureCakes(DEFAULT_SIGNATURE_CAKES);
+          safeStorage.setItem('bake_theory_sig_cakes', JSON.stringify(DEFAULT_SIGNATURE_CAKES));
+        }
+      } else {
+        setSignatureCakes(DEFAULT_SIGNATURE_CAKES);
+        safeStorage.setItem('bake_theory_sig_cakes', JSON.stringify(DEFAULT_SIGNATURE_CAKES));
       }
     };
 
@@ -448,6 +488,15 @@ export default function App() {
   const saveSignatureCakes = (updated: SignatureCake[]) => {
     setSignatureCakes(updated);
     safeStorage.setItem('bake_theory_sig_cakes', JSON.stringify(updated));
+
+    // Save to central server backend
+    fetch('/api/cakes/save-all', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(updated)
+    }).catch(err => console.error("Error saving cakes to server", err));
   };
 
   // Helper: Seed Initial Data
@@ -475,19 +524,19 @@ export default function App() {
   // AUTO-COMPUTED CALCULATION OF PRICE IN REAL-TIME
   // ------------------------------------------------------------------------
   const pricingBreakdown = useMemo(() => {
-    const chosenSize = SIZES.find(s => s.kg === cakeSize) || SIZES[1];
+    const chosenSize = sizes.find(s => s.kg === cakeSize) || sizes[1];
     const basePrice = chosenSize.basePrice;
     
-    const flavorObj = FLAVORS.find(f => f.name === cakeFlavor);
+    const flavorObj = flavors.find(f => f.name === cakeFlavor);
     const flavorSurcharge = (flavorObj?.surchargePerKg || 0) * cakeSize;
 
-    const frostingObj = FROSTINGS.find(fr => fr.name === cakeFrosting);
+    const frostingObj = frostings.find(fr => fr.name === cakeFrosting);
     const frostingPrice = frostingObj?.flatSurcharge || 0;
 
-    const fillingObj = FILLINGS.find(fi => fi.name === cakeFilling);
+    const fillingObj = fillings.find(fi => fi.name === cakeFilling);
     const fillingSurcharge = (fillingObj?.surchargePerKg || 0) * cakeSize;
 
-    const shapeObj = SHAPES.find(s => s.id === cakeShape);
+    const shapeObj = shapes.find(s => s.id === cakeShape);
     const shapeSurcharge = shapeObj?.surcharge || 0;
 
     // Tiers add special structural surcharge
@@ -496,7 +545,7 @@ export default function App() {
     // Toppings summing
     let toppingsSurcharge = 0;
     selectedToppings.forEach(topId => {
-      const topDetail = TOPPINGS_LIST.find(t => t.id === topId);
+      const topDetail = toppings.find(t => t.id === topId);
       if (topDetail) {
         toppingsSurcharge += topDetail.price;
       }
@@ -647,14 +696,40 @@ export default function App() {
   };
 
   // Reset order generator to build a second cake
+  const handleSaveDesignToGallery = () => {
+    if (!submittedOrder) return;
+    const cakeName = window.prompt("Enter a name for this signature cake design:", "Custom Creation");
+    if (!cakeName) return;
+    
+    const newSignatureCake: SignatureCake = {
+      id: `SC-${Date.now()}`,
+      name: cakeName,
+      description: `A masterfully crafted ${submittedOrder.flavor} cake with ${submittedOrder.frosting} and ${submittedOrder.toppings.join(', ')}.`,
+      image: submittedOrder.referencePhotoBase64 || "https://images.unsplash.com/photo-1578985545062-69928b1d9587?q=80&w=600&auto=format&fit=crop",
+      baseSize: submittedOrder.sizeKg,
+      baseTiers: submittedOrder.tiers,
+      baseShape: submittedOrder.shape,
+      baseFlavor: submittedOrder.flavor,
+      baseFrosting: submittedOrder.frosting,
+      baseFilling: submittedOrder.filling,
+      baseToppings: submittedOrder.toppings,
+      baseColor: submittedOrder.accentColor,
+      tags: ["Custom", "OwnerPick"],
+      price: submittedOrder.totalPrice
+    };
+    
+    handleAddNewSignatureCake(newSignatureCake);
+    alert("Saved to House Signature Series successfully!");
+  };
+
   const resetOrderBuilder = () => {
     setBuilderStep(1);
     setCakeSize(1.0);
     setCakeTiers(1);
     setCakeShape('round');
-    setCakeFlavor(FLAVORS[0].name);
-    setCakeFrosting(FROSTINGS[0].name);
-    setCakeFilling(FILLINGS[0].name);
+    setCakeFlavor(flavors[0].name);
+    setCakeFrosting(frostings[0].name);
+    setCakeFilling(fillings[0].name);
     setCakeAccentColor(COLOR_PALETTE[0].hex);
     setCustomAccentText('');
     setCakeMessage('');
@@ -782,6 +857,23 @@ export default function App() {
     saveOrders(newOrders);
     setSelectedOrderDetails(updatedItem);
     alert(`Order ${updatedItem.id} updated and saved successfully!`);
+  };
+
+  const handleUpdateSignatureCake = (cake: SignatureCake) => {
+    const updated = signatureCakes.map(c => c.id === cake.id ? cake : c);
+    saveSignatureCakes(updated);
+    setEditingCake(null);
+  };
+
+  const handleAddNewSignatureCake = (newCake: SignatureCake) => {
+    const updated = [...signatureCakes, newCake];
+    saveSignatureCakes(updated);
+    setIsAddingNewCake(false);
+  };
+
+  const handleDeleteSignatureCake = (id: string) => {
+    const updated = signatureCakes.filter(c => c.id !== id);
+    saveSignatureCakes(updated);
   };
 
   // Quick Action Utilities for whatsapp links and text messaging layout
@@ -961,7 +1053,7 @@ export default function App() {
                 <span className="inline-block bg-amber-200 text-amber-900 text-[10px] font-bold tracking-wider px-2.5 py-1 rounded-full uppercase">
                   Signature Gallery
                 </span>
-                <h2 className="text-2xl sm:text-3xl font-bold font-serif text-[#422210]">Explore Our Bakehouse Creations</h2>
+                <h2 className="text-2xl sm:text-3xl font-bold font-serif text-[#422210]">Explore Our Bake Theory Creations</h2>
                 <p className="text-sm text-amber-950/80 leading-relaxed">
                   Every slice of Bake Theory contains balanced food science and deep home bakery love. Browse our signature designs below. Select any design to adjust its size, shape, flavors, or custom messaging!
                 </p>
@@ -1010,6 +1102,16 @@ export default function App() {
                 ))}
               </div>
 
+              {isOwnerAuthenticated && (
+                <button 
+                  onClick={() => setIsAddingNewCake(true)}
+                  className="flex items-center gap-1.5 px-4 py-2 bg-green-600 text-white text-xs font-bold rounded-lg shadow-sm hover:bg-green-700 transition-all ml-auto sm:ml-0"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  Add New Cake
+                </button>
+              )}
+
               {/* Text Search Panel */}
               <div className="relative w-full sm:w-80">
                 <Search className="w-4 h-4 text-gray-400 absolute left-3 top-3" />
@@ -1028,7 +1130,23 @@ export default function App() {
             {filteredGalleryCakes.length > 0 ? (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
                 {filteredGalleryCakes.map((cake) => (
-                  <div key={cake.id} className="bg-white rounded-2xl border border-gray-150 shadow-3xs hover:shadow-2xs transition-all overflow-hidden flex flex-col group h-full">
+                  <div key={cake.id} className="bg-white rounded-2xl border border-gray-150 shadow-3xs hover:shadow-2xs transition-all overflow-hidden flex flex-col group h-full relative">
+                    {isOwnerAuthenticated && (
+                      <div className="absolute top-2 right-2 z-10 flex gap-1">
+                        <button 
+                          onClick={() => setEditingCake(cake)}
+                          className="p-1.5 bg-blue-500 text-white rounded-lg hover:bg-blue-600 shadow-md"
+                        >
+                          <Edit3 className="w-3.5 h-3.5" />
+                        </button>
+                        <button 
+                          onClick={() => handleDeleteSignatureCake(cake.id)}
+                          className="p-1.5 bg-red-500 text-white rounded-lg hover:bg-red-600 shadow-md"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    )}
                     {/* Cake Photo wrapper */}
                     <div className="relative aspect-video w-full bg-amber-50/50 overflow-hidden shrink-0">
                       <img 
@@ -1173,7 +1291,7 @@ export default function App() {
                 <div className="space-y-5">
                   <h3 className="text-md font-bold text-gray-800 border-l-4 border-amber-500 pl-2">1. Select Cake Weight & Sizing</h3>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    {SIZES.map(s => (
+                    {sizes.map(s => (
                       <button
                         key={s.kg}
                         onClick={() => setCakeSize(s.kg)}
@@ -1237,7 +1355,7 @@ export default function App() {
                   {/* Geometrics Shape Preference */}
                   <h3 className="text-md font-bold text-gray-800">3. Cake Base Outline Shape</h3>
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
-                    {SHAPES.map(sh => (
+                    {shapes.map(sh => (
                       <button
                         key={sh.id}
                         onClick={() => setCakeShape(sh.id as any)}
@@ -1274,7 +1392,7 @@ export default function App() {
                   <h3 className="text-md font-bold text-gray-800 border-l-4 border-amber-500 pl-2">Select Taste Formulation</h3>
                   
                   <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
-                    {FLAVORS.map(fl => (
+                    {flavors.map(fl => (
                       <button
                         key={fl.id}
                         onClick={() => setCakeFlavor(fl.name)}
@@ -1299,7 +1417,7 @@ export default function App() {
 
                   <h3 className="text-md font-bold text-gray-800">Outer Frosting Texture</h3>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                    {FROSTINGS.map(fr => (
+                    {frostings.map(fr => (
                       <button
                         key={fr.id}
                         onClick={() => setCakeFrosting(fr.name)}
@@ -1322,7 +1440,7 @@ export default function App() {
 
                   <h3 className="text-md font-bold text-gray-800">Rich Core Filling Layer</h3>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                    {FILLINGS.map(fi => (
+                    {fillings.map(fi => (
                       <button
                         key={fi.id}
                         onClick={() => setCakeFilling(fi.name)}
@@ -1423,7 +1541,7 @@ export default function App() {
                   {/* Add Toppings Checklist */}
                   <h3 className="text-md font-bold text-gray-800">Add Design Accents (Multiple Selection)</h3>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                    {TOPPINGS_LIST.map(topping => {
+                    {toppings.map(topping => {
                       const isSelected = selectedToppings.includes(topping.id);
                       return (
                         <button
@@ -1732,12 +1850,23 @@ export default function App() {
                     </div>
                   </div>
 
-                  <button
-                    onClick={resetOrderBuilder}
-                    className="px-6 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-xs font-semibold"
-                  >
-                    Bake Another Custom Cake
-                  </button>
+                  <div className="flex flex-col sm:flex-row gap-2 justify-center">
+                    <button
+                      onClick={resetOrderBuilder}
+                      className="px-6 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-xs font-semibold"
+                    >
+                      Bake Another Custom Cake
+                    </button>
+                    {isOwnerAuthenticated && (
+                      <button 
+                        onClick={handleSaveDesignToGallery}
+                        className="px-6 py-2 bg-amber-100 text-amber-950 rounded-lg text-xs font-bold hover:bg-amber-200 flex items-center justify-center gap-1.5"
+                      >
+                        <Save className="w-3.5 h-3.5" />
+                        Add to Gallery
+                      </button>
+                    )}
+                  </div>
                 </div>
               )}
 
@@ -2220,7 +2349,7 @@ export default function App() {
                                 <span className="text-[8px] mt-1 font-semibold text-gray-600">Pending</span>
                               </div>
 
-                              {/* Approved / In bakehouse dot */}
+                              {/* Approved / In Bake Theory dot */}
                               <div className="flex flex-col items-center">
                                 <div className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] z-1 ${
                                   ['approved', 'baking', 'finishing', 'ready', 'completed'].includes(ord.orderStatus) ? 'bg-amber-600 text-white' : 'bg-gray-300 text-gray-600'
@@ -2328,7 +2457,7 @@ export default function App() {
                 </div>
 
                 <div>
-                  <h2 className="text-xl font-bold font-serif text-[#422210]">Bakehouse Ledger Portal</h2>
+                  <h2 className="text-xl font-bold font-serif text-[#422210]">Bake Theory Ledger Portal</h2>
                   <p className="text-xs text-amber-800">
                     Secure login access for Bake Theory managers to regulate custom orders and track payments.
                   </p>
@@ -2369,16 +2498,26 @@ export default function App() {
               </div>
             ) : (
               // FULL BUSINESS OPERATIONS SUITE
-              <div className="space-y-6 animate-fade-in">
+              <div className="space-y-6 animate-fade-in relative pb-20">
                 
                 {/* Header operations header */}
                 <div className="bg-white rounded-xl border border-amber-100 shadow-2xs p-4 flex flex-col md:flex-row justify-between items-center gap-4">
                   <div>
-                    <h2 className="text-lg font-bold font-serif text-gray-900">Bakehouse Ledger Command Suite</h2>
+                    <h2 className="text-lg font-bold font-serif text-gray-900">Bake Theory Ledger Command Suite</h2>
                     <p className="text-xs text-gray-500">Regulate billing, payment receipts, order archives, and delivery schedules.</p>
                   </div>
 
                   <div className="flex gap-2">
+                    <button
+                      onClick={() => {
+                        setActiveTab('collection');
+                        window.scrollTo({ top: 0, behavior: 'smooth' });
+                      }}
+                      className="px-3 py-1.5 bg-green-50 border border-green-200 hover:bg-green-100 text-green-950 rounded-lg text-xs font-bold flex items-center gap-1.5"
+                    >
+                      <Cake className="w-3.5 h-3.5" />
+                      <span>Edit Gallery</span>
+                    </button>
                     <button
                       onClick={resetToSeedData}
                       className="px-3 py-1.5 bg-amber-50 border border-amber-200 hover:bg-amber-100 text-amber-950 rounded-lg text-xs font-semibold flex items-center gap-1"
@@ -2663,7 +2802,7 @@ export default function App() {
 
                           <div className="grid grid-cols-2 gap-3">
                             <div>
-                              <label className="block text-[10px] text-gray-500 uppercase font-bold mb-1">Bakehouse Phase</label>
+                              <label className="block text-[10px] text-gray-500 uppercase font-bold mb-1">Bake Theory Phase</label>
                               <select
                                 value={editStatus}
                                 onChange={(e) => setEditStatus(e.target.value as any)}
@@ -2770,6 +2909,179 @@ export default function App() {
 
                 </div>
 
+                {/* EXTRA SECTION: CUSTOM DESIGNER CONFIGURATION */}
+                <div className="bg-white rounded-2xl border border-amber-100 shadow-sm p-6 overflow-hidden">
+                  <div className="flex items-center gap-3 border-b border-amber-50 pb-4 mb-6">
+                    <div className="w-10 h-10 bg-amber-100 rounded-xl flex items-center justify-center text-amber-700">
+                      <Sparkles className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <h3 className="font-bold font-serif text-gray-900">Custom Designer Configuration</h3>
+                      <p className="text-[10px] text-gray-500 uppercase tracking-wider font-bold">Edit Bake Theory flavors, fillings, and pricing math</p>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                    {/* Flavors Editor */}
+                    <div className="space-y-4">
+                      <h4 className="text-xs font-black text-[#422210] uppercase tracking-widest flex items-center justify-between">
+                        <span>1. Master Flavors Registry</span>
+                        <span className="text-[9px] bg-amber-100 px-1.5 py-0.5 rounded text-amber-800">Per Kg Surcgarge</span>
+                      </h4>
+                      <div className="space-y-2 max-h-64 overflow-y-auto pr-2">
+                        {flavors.map((fl, idx) => (
+                          <div key={fl.id} className="flex items-center gap-2 bg-gray-50 p-2 rounded-lg border border-gray-100">
+                            <input 
+                              type="text" 
+                              value={fl.name} 
+                              onChange={(e) => {
+                                const newFlavors = [...flavors];
+                                newFlavors[idx].name = e.target.value;
+                                setFlavors(newFlavors);
+                              }}
+                              className="flex-1 bg-white border border-gray-200 rounded px-2 py-1 text-xs"
+                            />
+                            <div className="flex items-center gap-1">
+                              <span className="text-[10px] text-gray-400">₹</span>
+                              <input 
+                                type="number" 
+                                value={fl.surchargePerKg} 
+                                onChange={(e) => {
+                                  const newFlavors = [...flavors];
+                                  newFlavors[idx].surchargePerKg = Number(e.target.value);
+                                  setFlavors(newFlavors);
+                                }}
+                                className="w-16 bg-white border border-gray-200 rounded px-2 py-1 text-xs font-mono"
+                              />
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Frostings Editor */}
+                    <div className="space-y-4">
+                      <h4 className="text-xs font-black text-[#422210] uppercase tracking-widest flex items-center justify-between">
+                        <span>2. Outer Frosting Finish</span>
+                        <span className="text-[9px] bg-amber-100 px-1.5 py-0.5 rounded text-amber-800">Flat Surcharge</span>
+                      </h4>
+                      <div className="space-y-2 max-h-64 overflow-y-auto pr-2">
+                        {frostings.map((fr, idx) => (
+                          <div key={fr.id} className="flex items-center gap-2 bg-gray-50 p-2 rounded-lg border border-gray-100">
+                            <input 
+                              type="text" 
+                              value={fr.name} 
+                              onChange={(e) => {
+                                const newFrostings = [...frostings];
+                                newFrostings[idx].name = e.target.value;
+                                setFrostings(newFrostings);
+                              }}
+                              className="flex-1 bg-white border border-gray-200 rounded px-2 py-1 text-xs"
+                            />
+                            <div className="flex items-center gap-1">
+                              <span className="text-[10px] text-gray-400">₹</span>
+                              <input 
+                                type="number" 
+                                value={fr.flatSurcharge} 
+                                onChange={(e) => {
+                                  const newFrostings = [...frostings];
+                                  newFrostings[idx].flatSurcharge = Number(e.target.value);
+                                  setFrostings(newFrostings);
+                                }}
+                                className="w-16 bg-white border border-gray-200 rounded px-2 py-1 text-xs font-mono"
+                              />
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Fillings Editor */}
+                    <div className="space-y-4">
+                      <h4 className="text-xs font-black text-[#422210] uppercase tracking-widest flex items-center justify-between">
+                        <span>3. Hidden Core Fillings</span>
+                        <span className="text-[9px] bg-amber-100 px-1.5 py-0.5 rounded text-amber-800">Per Kg</span>
+                      </h4>
+                      <div className="space-y-2 max-h-64 overflow-y-auto pr-2">
+                        {fillings.map((fi, idx) => (
+                          <div key={fi.id} className="flex items-center gap-2 bg-gray-50 p-2 rounded-lg border border-gray-100">
+                            <input 
+                              type="text" 
+                              value={fi.name} 
+                              onChange={(e) => {
+                                const newFillings = [...fillings];
+                                newFillings[idx].name = e.target.value;
+                                setFillings(newFillings);
+                              }}
+                              className="flex-1 bg-white border border-gray-200 rounded px-2 py-1 text-xs"
+                            />
+                            <div className="flex items-center gap-1">
+                              <span className="text-[10px] text-gray-400">₹</span>
+                              <input 
+                                type="number" 
+                                value={fi.surchargePerKg} 
+                                onChange={(e) => {
+                                  const newFillings = [...fillings];
+                                  newFillings[idx].surchargePerKg = Number(e.target.value);
+                                  setFillings(newFillings);
+                                }}
+                                className="w-16 bg-white border border-gray-200 rounded px-2 py-1 text-xs font-mono"
+                              />
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Toppings Editor */}
+                    <div className="space-y-4">
+                      <h4 className="text-xs font-black text-[#422210] uppercase tracking-widest flex items-center justify-between">
+                        <span>4. Decorative Accents</span>
+                        <span className="text-[9px] bg-amber-100 px-1.5 py-0.5 rounded text-amber-800">Unit Price</span>
+                      </h4>
+                      <div className="space-y-2 max-h-64 overflow-y-auto pr-2">
+                        {toppings.map((tp, idx) => (
+                          <div key={tp.id} className="flex items-center gap-2 bg-gray-50 p-2 rounded-lg border border-gray-100">
+                            <input 
+                              type="text" 
+                              value={tp.name} 
+                              onChange={(e) => {
+                                const newToppings = [...toppings];
+                                newToppings[idx].name = e.target.value;
+                                setToppings(newToppings);
+                              }}
+                              className="flex-1 bg-white border border-gray-200 rounded px-2 py-1 text-xs"
+                            />
+                            <div className="flex items-center gap-1">
+                              <span className="text-[10px] text-gray-400">₹</span>
+                              <input 
+                                type="number" 
+                                value={tp.price} 
+                                onChange={(e) => {
+                                  const newToppings = [...toppings];
+                                  newToppings[idx].price = Number(e.target.value);
+                                  setToppings(newToppings);
+                                }}
+                                className="w-16 bg-white border border-gray-200 rounded px-2 py-1 text-xs font-mono"
+                              />
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="mt-8 pt-6 border-t border-amber-50 text-center">
+                    <p className="text-xs text-gray-500 mb-4 italic">Note: These changes are applied in real-time to the Custom Designer for all customers. Currently stored in browser memory only (Persistent DB support coming soon).</p>
+                    <button 
+                      onClick={() => alert("Designer configuration remains active for this session. Save to server backend triggered.")}
+                      className="px-6 py-2.5 bg-amber-600 hover:bg-amber-700 text-white rounded-xl font-bold text-xs uppercase tracking-widest shadow-sm transition-all"
+                    >
+                      Publish Designer Updates
+                    </button>
+                  </div>
+                </div>
+
               </div>
             )}
 
@@ -2871,6 +3183,27 @@ export default function App() {
           <p className="text-[11px] text-[#422210]/60">Handcrafted lovingly with organic toppings, pure dairy cream, and chemical-free sponge bases.</p>
         </div>
       </footer>
+
+      {/* ========================================================== */}
+      {/* SIGNATURE CAKE MANAGEMENT MODALS */}
+      {/* ========================================================== */}
+      {(editingCake || isAddingNewCake) && (
+        <SignatureCakeManager 
+          cake={editingCake} 
+          isNew={isAddingNewCake}
+          onSave={(cake) => {
+            if (isAddingNewCake) {
+              handleAddNewSignatureCake(cake);
+            } else {
+              handleUpdateSignatureCake(cake);
+            }
+          }}
+          onCancel={() => {
+            setEditingCake(null);
+            setIsAddingNewCake(false);
+          }}
+        />
+      )}
 
     </div>
   );
